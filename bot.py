@@ -636,26 +636,30 @@ def relay(message):
     if message.content_type in ['photo', 'video']:
         update_media_activity(user_id)
 
-    # Album detection
+    # =========================
+    # 📦 Album Handling
+    # =========================
+
     if message.media_group_id:
+    
         group_id = message.media_group_id
+    
         media_groups[group_id].append(message)
+    
+        # Small delay to allow all album items to arrive
+        time.sleep(0.5)
+    
+        # Only process once
+        album = media_groups.pop(group_id, None)
+    
+        if album:
+            broadcast_queue.put({
+                "type": "album",
+                "messages": album
+            })
+    
+        return  # IMPORTANT: stop here for album messages
 
-    # If this is not the last item yet, just return
-    if len(media_groups[group_id]) < 2:
-        return
-
-    # Small delay to ensure full album arrives
-    time.sleep(0.5)
-
-    album = media_groups.pop(group_id, [])
-
-    if album:
-        broadcast_queue.put({
-            "type": "album",
-            "messages": "album"
-        })
-        return
     else:
         broadcast_queue.put({
             "type": "single",
