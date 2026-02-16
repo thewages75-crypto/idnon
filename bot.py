@@ -18,7 +18,7 @@ from telebot.types import (
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-ADMIN_ID = 123456789  # 🔴 Replace with your Telegram ID
+ADMIN_ID = 8409712258  #  Replace with your Telegram ID
 
 bot = telebot.TeleBot(API_TOKEN)
 
