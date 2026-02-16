@@ -413,6 +413,14 @@ def start(message):
         waiting_username.add(uid)
         bot.reply_to(message,"👋 Welcome! Send your username.")
         return
+        now = int(time.time())
+        with conn.cursor() as c:
+            c.execute(
+                "UPDATE users SET last_media=%s WHERE user_id=%s",
+                (now, user_id)
+            )
+            conn.commit()
+
 
     if not get_username(uid):
         waiting_username.add(uid)
@@ -593,10 +601,22 @@ def relay(message):
     user_id = message.chat.id
 
     # 🚫 Manual ban
-    blocked, reason = user_blocked_by_system(user_id)
-    if blocked:
-        bot.reply_to(message, reason)
+   # Manual ban always blocks
+    # Manual ban always blocks
+    # Manual ban always blocks
+    if is_banned(user_id):
+        bot.reply_to(message, "🚫 You are banned.")
         return
+    
+    # If auto-banned and user sends media → allow recovery
+    if is_auto_banned(user_id):
+    
+        if message.content_type in ['photo', 'video']:
+            update_media_activity(user_id)
+            bot.reply_to(message, "🎉 You are unbanned. Stay active!")
+        else:
+            bot.reply_to(message, "⏳ You are inactive. Send media to reactivate.")
+            return
 
     # 👻 Shadow behavior
     if is_shadow(user_id):
@@ -612,21 +632,33 @@ def relay(message):
     # ⏳ Inactivity check
     check_inactive_users()
 
-    # 📸 Media tracking
+    # Media tracking
     if message.content_type in ['photo', 'video']:
         update_media_activity(user_id)
 
-    # 📦 Album detection
+    # Album detection
     if message.media_group_id:
-        media_groups[message.media_group_id].append(message)
-        time.sleep(1)
 
-        if message.media_group_id in media_groups:
-            album = media_groups.pop(message.media_group_id)
-            broadcast_queue.put({
-                "type": "album",
-                "messages": album
-            })
+    group_id = message.media_group_id
+    media_groups[group_id].append(message)
+
+    # If this is not the last item yet, just return
+    if len(media_groups[group_id]) < 2:
+        return
+
+    # Small delay to ensure full album arrives
+    time.sleep(0.5)
+
+    album = media_groups.pop(group_id, [])
+
+    if album:
+        broadcast_queue.put({
+            "type": "album",
+            "messages": album
+        })
+
+    return
+
 
     else:
         broadcast_queue.put({
