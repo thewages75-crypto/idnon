@@ -583,7 +583,11 @@ def _process_album(messages):
             except:
                 pass
 
-@bot.message_handler(content_types=['text', 'photo', 'video'])
+#@bot.message_handler(content_types=['text', 'photo', 'video'])
+@bot.message_handler(
+    func=lambda m: not m.text or not m.text.startswith('/'),
+    content_types=['text','photo','video']
+)
 def relay(message):
 
     user_id = message.chat.id
