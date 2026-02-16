@@ -663,7 +663,7 @@ def relay(message):
     else:
         broadcast_queue.put({
             "type": "single",
-            "message": "message"
+            "message": message
         })
 
 # =========================================================
