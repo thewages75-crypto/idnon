@@ -693,18 +693,27 @@ def stats(message):
 
 @bot.message_handler(commands=['info'])
 def info(message):
+
     if not is_admin(message.chat.id):
         return
 
-    parts = message.text.split()
-    if len(parts) < 2:
-        bot.reply_to(message, "Usage: /info USER_ID")
-        return
+    uid = None
 
-    try:
-        uid = int(parts[1])
-    except:
-        bot.reply_to(message, "Invalid ID.")
+    # 🔁 Reply method
+    if message.reply_to_message:
+        uid = get_original_user(message.reply_to_message.message_id)
+
+    # 🆔 ID method
+    else:
+        parts = message.text.split()
+        if len(parts) > 1:
+            try:
+                uid = int(parts[1])
+            except:
+                pass
+
+    if not uid:
+        bot.reply_to(message, "❌ Use:\n/info USER_ID\nor reply to a user message.")
         return
 
     with conn.cursor() as c:
@@ -716,7 +725,7 @@ def info(message):
         data = c.fetchone()
 
     if not data:
-        bot.reply_to(message, "User not found.")
+        bot.reply_to(message, "❌ User not found.")
         return
 
     bot.reply_to(
@@ -729,6 +738,7 @@ def info(message):
         f"👻 Shadow Banned: {data[4]}\n"
         f"📸 Media Sent: {data[5]}"
     )
+
 @bot.message_handler(commands=['ban'])
 def reply_ban(message):
     if not is_admin(message.chat.id):
@@ -748,20 +758,32 @@ def reply_ban(message):
     bot.reply_to(message, f"🔨 User {uid} banned.")
 @bot.message_handler(commands=['unban'])
 def admin_unban(message):
+
     if not is_admin(message.chat.id):
         return
 
-    parts = message.text.split()
-    if len(parts) < 2:
-        bot.reply_to(message, "Usage: /unban USER_ID")
+    uid = None
+
+    # 🔁 If reply method
+    if message.reply_to_message:
+        uid = get_original_user(message.reply_to_message.message_id)
+
+    # 🆔 If ID method
+    else:
+        parts = message.text.split()
+        if len(parts) > 1:
+            try:
+                uid = int(parts[1])
+            except:
+                pass
+
+    if not uid:
+        bot.reply_to(message, "❌ Could not detect user.")
         return
 
-    try:
-        uid = int(parts[1])
-        unban_user(uid)
-        bot.reply_to(message, f"✅ User {uid} unbanned.")
-    except:
-        bot.reply_to(message, "Invalid ID.")
+    unban_user(uid)
+    bot.reply_to(message, f"✅ User {uid} unbanned.")
+
 @bot.message_handler(commands=['purge'])
 def purge_user(message):
     if not is_admin(message.chat.id):
