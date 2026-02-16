@@ -653,7 +653,7 @@ def relay(message):
     if album:
         broadcast_queue.put({
             "type": "album",
-            "messages": album
+            "messages": "album"
         })
 
     return
