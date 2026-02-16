@@ -90,6 +90,20 @@ init_db()
 # =========================
 # 👤 USER MANAGEMENT
 # =========================
+def get_all_users():
+    """
+    Return all users who are allowed to receive broadcast.
+    Excludes manually banned and auto-banned users.
+    """
+    with conn.cursor() as c:
+        c.execute("""
+            SELECT user_id
+            FROM users
+            WHERE banned=FALSE
+              AND auto_banned=FALSE
+        """)
+        return c.fetchall()
+
 
 def add_user(user_id):
     """Add user to database."""
