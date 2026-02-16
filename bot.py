@@ -638,9 +638,8 @@ def relay(message):
 
     # Album detection
     if message.media_group_id:
-
-    group_id = message.media_group_id
-    media_groups[group_id].append(message)
+        group_id = message.media_group_id
+        media_groups[group_id].append(message)
 
     # If this is not the last item yet, just return
     if len(media_groups[group_id]) < 2:
