@@ -613,7 +613,7 @@ def user_blocked_by_system(user_id):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    uid=message.chat.id
+    user_id=message.chat.id
     add_user(user_id)
 
     # THIS IS A CRUCIAL PART: we update media activity on /start to prevent auto-ban for returning users and new join members who might not send media immediately
@@ -1447,6 +1447,7 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("🤖 Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
 
 
