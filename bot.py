@@ -236,11 +236,11 @@ def is_shadow(user_id):
 
 def update_media_activity(user_id):
     now = int(time.time())
-    """Update last media time and increment media count."""
+
     with get_connection() as conn:
         with conn.cursor() as c:
 
-            # Increase media count
+            # Increment media count
             c.execute("""
                 UPDATE users
                 SET last_media=%s,
@@ -248,19 +248,19 @@ def update_media_activity(user_id):
                 WHERE user_id=%s
             """, (now, user_id))
 
-            # Check auto-ban status + count
+            # Get updated status
             c.execute("""
                 SELECT auto_banned, media_count
                 FROM users
                 WHERE user_id=%s
             """, (user_id,))
-            result = c.fetchone()
+            auto_banned, count = c.fetchone()
 
-            if result:
-                auto_banned, count = result
+            # If still auto banned
+            if auto_banned:
 
-                # If user is auto-banned and reached 12 media
-                if auto_banned and count >= 12:
+                if count >= 12:
+                    # Reactivate
                     c.execute("""
                         UPDATE users
                         SET auto_banned=FALSE,
@@ -268,12 +268,16 @@ def update_media_activity(user_id):
                         WHERE user_id=%s
                     """, (user_id,))
                     conn.commit()
-                    return True  # reactivated
+                    return "reactivated", 0
 
-        conn.commit()
+                else:
+                    remaining = 12 - count
+                    conn.commit()
+                    return "progress", remaining
 
-    return False
+            conn.commit()
 
+    return None, 0
 
 def check_inactive_users():
     """Auto ban inactive users (1 minute logic)."""
@@ -692,14 +696,36 @@ def relay(message):
         return
     
     # If auto-banned and user sends media → allow recovery
+# ⏳ Auto-ban recovery
     if is_auto_banned(user_id):
     
         if message.content_type in ['photo', 'video']:
-            update_media_activity(user_id)
-            bot.reply_to(message, "🎉 You are unbanned. Stay active!")
-        else:
-            bot.reply_to(message, "⏳ You are inactive. Send media to reactivate.")
+    
+            # Only process once per album
+            if message.media_group_id:
+                if message.media_group_id in media_groups:
+                    return
+    
+            status, remaining = update_media_activity(user_id)
+    
+            if status == "reactivated":
+                bot.reply_to(message, "🎉 You are active again!")
+    
+            elif status == "progress":
+                bot.reply_to(
+                    message,
+                    f"📸 {remaining} media left to reactivate."
+                )
+    
             return
+    
+        else:
+            bot.reply_to(
+                message,
+                "⏳ You are inactive.\nSend 12 media to reactivate."
+            )
+            return
+
 
     # 👻 Shadow behavior
     if is_shadow(user_id):
