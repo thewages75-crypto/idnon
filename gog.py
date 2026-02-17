@@ -20,7 +20,7 @@ album_timers = {}
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-ADMIN_ID = 8046643349  #  Replace with your Telegram ID
+ADMIN_ID = 8010306055  #  Replace with your Telegram ID
 
 bot = telebot.TeleBot(API_TOKEN)
 
@@ -308,7 +308,7 @@ def update_media_activity(user_id, amount=1):
     return "active", 0
 
 def check_inactive_users():
-    limit = int(time.time()) - 60
+    limit = int(time.time()) - 60*5
 
     with get_connection() as conn:
         with conn.cursor() as c:
@@ -1236,6 +1236,7 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
 
 
