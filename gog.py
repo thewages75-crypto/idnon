@@ -21,7 +21,7 @@ from telebot.types import (
 API_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_ID = 123456789  # 🔴 Replace with your Telegram ID
-auto_banned = FALSE
+auto_banned = False
 media_count = 0
 
 bot = telebot.TeleBot(API_TOKEN)
@@ -1447,5 +1447,6 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("🤖 Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
 
