@@ -285,26 +285,26 @@ def update_media_activity(user_id, amount=1):
             """, (user_id,))
             auto_banned, count = c.fetchone()
 
-            if auto_banned:
-
-                if count >= 12:
-                    c.execute("""
-                        UPDATE users
-                        SET auto_banned=FALSE,
-                            media_count=0
-                        WHERE user_id=%s
-                    """, (user_id,))
-                    conn.commit()
-                    return "reactivated", 0
-
+            # 🔹 Initial activation
+            if count < 12:
                 remaining = 12 - count
                 conn.commit()
                 return "progress", remaining
 
+            # 🔹 If auto-banned and reached 12 → recover
+            if auto_banned and count >= 12:
+                c.execute("""
+                    UPDATE users
+                    SET auto_banned=FALSE,
+                        media_count=12
+                    WHERE user_id=%s
+                """, (user_id,))
+                conn.commit()
+                return "reactivated", 0
+
         conn.commit()
 
-    return None, 0
-
+    return "active", 0
 
 def check_inactive_users():
     limit = int(time.time()) - 60
@@ -722,16 +722,42 @@ def relay(message):
     user_id = message.chat.id
 
     # 🚫 Manual ban
-   # Manual ban always blocks
+   # 🚫 Manual ban
     if is_banned(user_id):
-        bot.reply_to(message, "🚫 You are banned.")
+        bot.send_message(user_id, "🚫 You are banned.")
         return
-    #exclude admin and user from whitelist
-    if user_id == ADMIN_ID or is_whitelisted(user_id):
-        pass
-
-    # If auto-banned and user sends media → allow recovery
     
+    # 🔒 Not yet activated
+    if not is_whitelisted(user_id) and user_id != ADMIN_ID:
+    
+        with get_connection() as conn:
+            with conn.cursor() as c:
+                c.execute(
+                    "SELECT media_count FROM users WHERE user_id=%s",
+                    (user_id,)
+                )
+                count = c.fetchone()[0]
+    
+        if count < 12:
+    
+            if message.content_type in ['photo', 'video']:
+    
+                # Handle album counting separately like before
+                status, remaining = update_media_activity(user_id, 1)
+    
+                bot.send_message(
+                    user_id,
+                    f"📸 {remaining} media left to activate."
+                )
+                return
+    
+            else:
+                bot.send_message(
+                    user_id,
+                    "🔒 Send 12 media to activate your account."
+                )
+                return
+
 # ⏳ Auto-ban recovery
 if is_auto_banned(user_id) and not is_whitelisted(user_id) and user_id != ADMIN_ID:
 
