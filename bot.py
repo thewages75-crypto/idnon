@@ -641,11 +641,16 @@ def relay(message):
     if message.media_group_id:
     
         group_id = message.media_group_id
+    
+        # Add message to group
         media_groups[group_id].append(message)
     
-        # Wait briefly only for first item
-        if len(media_groups[group_id]) == 1:
-            time.sleep(0.8)
+        # If this is not the first item, just return
+        if len(media_groups[group_id]) > 1:
+            return
+    
+        # First item waits for rest
+        time.sleep(0.7)
     
         album = media_groups.pop(group_id, [])
     
