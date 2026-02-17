@@ -49,6 +49,7 @@ def init_db():
                 banned BOOLEAN DEFAULT FALSE,
                 auto_banned BOOLEAN DEFAULT FALSE,
                 shadow_banned BOOLEAN DEFAULT FALSE,
+                whitelisted BOOLEAN DEFAULT FALSE,
                 media_count INTEGER DEFAULT 0,
                 last_media BIGINT
             )
@@ -102,6 +103,36 @@ init_db()
 # =========================
 # 👤 USER MANAGEMENT
 # =========================
+def whitelist_user(user_id):
+    with get_connection() as conn:
+        with conn.cursor() as c:
+            c.execute(
+                "UPDATE users SET whitelisted=TRUE WHERE user_id=%s",
+                (user_id,)
+            )
+        conn.commit()
+
+
+def remove_whitelist(user_id):
+    with get_connection() as conn:
+        with conn.cursor() as c:
+            c.execute(
+                "UPDATE users SET whitelisted=FALSE WHERE user_id=%s",
+                (user_id,)
+            )
+        conn.commit()
+
+
+def is_whitelisted(user_id):
+    with get_connection() as conn:
+        with conn.cursor() as c:
+            c.execute(
+                "SELECT whitelisted FROM users WHERE user_id=%s",
+                (user_id,)
+            )
+            r = c.fetchone()
+            return r and r[0]
+
 def get_all_users():
     """
     Return all users who are allowed to receive broadcast.
@@ -280,16 +311,21 @@ def update_media_activity(user_id):
     return None, 0
 
 def check_inactive_users():
-    """Auto ban inactive users (1 minute logic)."""
     limit = int(time.time()) - 60
-    with conn.cursor() as c:
-        c.execute("""
-            UPDATE users
-            SET auto_banned=TRUE
-            WHERE last_media < %s
-              AND banned=FALSE
-        """, (limit,))
+
+    with get_connection() as conn:
+        with conn.cursor() as c:
+            c.execute("""
+                UPDATE users
+                SET auto_banned=TRUE
+                WHERE (last_media IS NULL OR last_media < %s)
+                  AND banned=FALSE
+                  AND whitelisted=FALSE
+                  AND user_id != %s
+            """, (limit, ADMIN_ID))
+
         conn.commit()
+
 
 
 def is_auto_banned(user_id):
@@ -694,8 +730,12 @@ def relay(message):
     if is_banned(user_id):
         bot.reply_to(message, "🚫 You are banned.")
         return
-    
+    #exclude admin and user from whitelist
+    if user_id == ADMIN_ID or is_whitelisted(user_id):
+    pass
+
     # If auto-banned and user sends media → allow recovery
+    
 # ⏳ Auto-ban recovery
     if is_auto_banned(user_id):
     
