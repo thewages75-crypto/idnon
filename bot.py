@@ -411,13 +411,15 @@ def start(message):
             bot.reply_to(message,"🚪 Joining is closed by admin.")
             return
         add_user(uid)
+        add_user(user_id)
         now = int(time.time())
         with conn.cursor() as c:
             c.execute(
-                "UPDATE users SET last_media=% WHERE user_id=%s,
-                (now,user_id)
+                "UPDATE users SET last_media=%s WHERE user_id=%s",
+                (now, user_id)
             )
             conn.commit()
+
         waiting_username.add(uid)
         bot.reply_to(message,"👋 Welcome! Send your username.")
         return
