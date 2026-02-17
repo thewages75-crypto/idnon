@@ -721,96 +721,110 @@ def _process_album(messages):
     content_types=['text','photo','video']
 )
 def relay(message):
-    count = 0
-    auto_banned = False
+
     user_id = message.chat.id
 
     # 🚫 Manual ban
-   # 🚫 Manual ban
     if is_banned(user_id):
         bot.send_message(user_id, "🚫 You are banned.")
         return
-    
-    # 🔒 Not yet activated
-    # 🔒 Activation check
-    # Skip for admin and whitelisted users
-    if not is_whitelisted(user_id) and user_id != ADMIN_ID:
 
-        with get_connection() as conn:
-            with conn.cursor() as c:
-                c.execute(
-                    "SELECT media_count, auto_banned FROM users WHERE user_id=%s",
-                    (user_id,)
-                )
-                row = c.fetchone()
+    # 👑 ADMIN BYPASS (skip all restrictions)
+    if user_id == ADMIN_ID:
+        pass
+    else:
+        # 🔒 Only apply restrictions to normal users
+        if not is_whitelisted(user_id):
 
-        if  row:
-            count, auto_banned = row
-        else:
-            count = 0
-            auto_banned = False
+            with get_connection() as conn:
+                with conn.cursor() as c:
+                    c.execute(
+                        "SELECT media_count, auto_banned FROM users WHERE user_id=%s",
+                        (user_id,)
+                    )
+                    row = c.fetchone()
 
-    # =========================
-    # 🔒 INITIAL ACTIVATION
-    # =========================
-    if count < 12 and not auto_banned:
+            if row:
+                count, auto_banned = row
+            else:
+                count = 0
+                auto_banned = False
 
-        # Album case
-        if message.media_group_id:
+            # =========================
+            # 🔒 INITIAL ACTIVATION
+            # =========================
+            if count < 12 and not auto_banned:
 
-            group_id = message.media_group_id
-            media_groups[group_id].append(message)
+                # Album case
+                if message.media_group_id:
 
-            # If timer already exists, just return
-            if group_id in album_timers:
-                return
+                    group_id = message.media_group_id
+                    media_groups[group_id].append(message)
 
-            def process_activation():
-                time.sleep(0.8)
+                    if group_id in album_timers:
+                        return
 
-                album = media_groups.pop(group_id, [])
-                album_timers.pop(group_id, None)
+                    def process_activation():
+                        time.sleep(0.8)
 
-                if not album:
+                        album = media_groups.pop(group_id, [])
+                        album_timers.pop(group_id, None)
+
+                        if not album:
+                            return
+
+                        status, remaining = update_media_activity(
+                            user_id,
+                            len(album)
+                        )
+
+                        if remaining > 0:
+                            bot.send_message(
+                                user_id,
+                                f"📸 {remaining} media left to activate."
+                            )
+                        else:
+                            bot.send_message(
+                                user_id,
+                                "🎉 Your account is now activated!"
+                            )
+
+                    album_timers[group_id] = True
+                    threading.Thread(target=process_activation).start()
                     return
 
-                status, remaining = update_media_activity(
-                    user_id,
-                    len(album)
-                )
+                # Single media
+                elif message.content_type in ['photo', 'video']:
 
-                if remaining > 0:
-                    bot.send_message(
-                        user_id,
-                        f"📸 {remaining} media left to activate."
-                    )
+                    status, remaining = update_media_activity(user_id, 1)
+
+                    if remaining > 0:
+                        bot.send_message(
+                            user_id,
+                            f"📸 {remaining} media left to activate."
+                        )
+                    else:
+                        bot.send_message(
+                            user_id,
+                            "🎉 Your account is now activated!"
+                        )
+
+                    return
+
+                # Text
                 else:
                     bot.send_message(
                         user_id,
-                        "🎉 Your account is now activated!"
+                        "🔒 Send 12 media to activate your account."
                     )
+                    return
 
-            album_timers[group_id] = True
-            threading.Thread(target=process_activation).start()
-            return
+    # =========================
+    # ✅ NORMAL BROADCAST SECTION
+    # =========================
 
-        # Single media case
-        elif message.content_type in ['photo', 'video']:
-
-            status, remaining = update_media_activity(user_id, 1)
-
-            if remaining > 0:
-                bot.send_message(
-                    user_id,
-                    f"📸 {remaining} media left to activate."
-                )
-            else:
-                bot.send_message(
-                    user_id,
-                    "🎉 Your account is now activated!"
-                )
-
-            return
+    # (Your album broadcast logic here)
+    # (Your queue logic here)
 
         # Text case
         else:
@@ -1236,6 +1250,7 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
 
 
