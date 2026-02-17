@@ -851,9 +851,10 @@ if not is_whitelisted(user_id) and user_id != ADMIN_ID:
                 (user_id,)
             )
             row = c.fetchone()
+            
 
-    if not row:
-        return
+            if not row:
+                return
 
     count, auto_banned = row
 
@@ -1449,3 +1450,4 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("🤖 Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
