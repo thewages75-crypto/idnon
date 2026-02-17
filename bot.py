@@ -265,21 +265,19 @@ def is_shadow(user_id):
 # ⏳ AUTO INACTIVITY SYSTEM
 # =========================
 
-def update_media_activity(user_id):
+def update_media_activity(user_id, amount=1):
     now = int(time.time())
 
     with get_connection() as conn:
         with conn.cursor() as c:
 
-            # Increment media count
             c.execute("""
                 UPDATE users
                 SET last_media=%s,
-                    media_count = media_count + 1
+                    media_count = media_count + %s
                 WHERE user_id=%s
-            """, (now, user_id))
+            """, (now, amount, user_id))
 
-            # Get updated status
             c.execute("""
                 SELECT auto_banned, media_count
                 FROM users
@@ -287,11 +285,9 @@ def update_media_activity(user_id):
             """, (user_id,))
             auto_banned, count = c.fetchone()
 
-            # If still auto banned
             if auto_banned:
 
                 if count >= 12:
-                    # Reactivate
                     c.execute("""
                         UPDATE users
                         SET auto_banned=FALSE,
@@ -301,14 +297,14 @@ def update_media_activity(user_id):
                     conn.commit()
                     return "reactivated", 0
 
-                else:
-                    remaining = 12 - count
-                    conn.commit()
-                    return "progress", remaining
+                remaining = 12 - count
+                conn.commit()
+                return "progress", remaining
 
-            conn.commit()
+        conn.commit()
 
     return None, 0
+
 
 def check_inactive_users():
     limit = int(time.time()) - 60
@@ -737,34 +733,63 @@ def relay(message):
     # If auto-banned and user sends media → allow recovery
     
 # ⏳ Auto-ban recovery
-    if is_auto_banned(user_id):
-    
-        if message.content_type in ['photo', 'video']:
-    
-            # Only process once per album
-            if message.media_group_id:
-                if message.media_group_id in media_groups:
-                    return
-    
-            status, remaining = update_media_activity(user_id)
-    
+if is_auto_banned(user_id) and not is_whitelisted(user_id) and user_id != ADMIN_ID:
+
+    # If album
+    if message.media_group_id:
+
+        group_id = message.media_group_id
+        media_groups[group_id].append(message)
+
+        if group_id in album_timers:
+            return
+
+        def process_recovery():
+            time.sleep(0.8)  # wait for full album
+
+            album = media_groups.pop(group_id, [])
+            album_timers.pop(group_id, None)
+
+            if not album:
+                return
+
+            status, remaining = update_media_activity(user_id, len(album))
+
             if status == "reactivated":
-                bot.reply_to(message, "🎉 You are active again!")
-    
+                bot.send_message(user_id, "🎉 You are active again!")
+
             elif status == "progress":
-                bot.reply_to(
-                    message,
+                bot.send_message(
+                    user_id,
                     f"📸 {remaining} media left to reactivate."
                 )
-    
-            return
-    
-        else:
-            bot.reply_to(
-                message,
-                "⏳ You are inactive.\nSend 12 media to reactivate."
+
+        album_timers[group_id] = True
+        threading.Thread(target=process_recovery).start()
+        return
+
+    # If single media
+    elif message.content_type in ['photo', 'video']:
+
+        status, remaining = update_media_activity(user_id, 1)
+
+        if status == "reactivated":
+            bot.send_message(user_id, "🎉 You are active again!")
+
+        elif status == "progress":
+            bot.send_message(
+                user_id,
+                f"📸 {remaining} media left to reactivate."
             )
-            return
+
+        return
+
+    else:
+        bot.send_message(
+            user_id,
+            "⏳ You are inactive.\nSend 12 media to reactivate."
+        )
+        return
 
 
     # 👻 Shadow behavior
