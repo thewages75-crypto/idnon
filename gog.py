@@ -511,7 +511,7 @@ def user_blocked_by_system(user_id):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-
+    user_id = message.chat.id
     # 👑 ADMIN BYPASS (no activation needed)
     if user_id == ADMIN_ID:
         if not user_exists(user_id):
@@ -1235,4 +1235,5 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
