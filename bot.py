@@ -602,8 +602,6 @@ def relay(message):
 
     # 🚫 Manual ban
    # Manual ban always blocks
-    # Manual ban always blocks
-    # Manual ban always blocks
     if is_banned(user_id):
         bot.reply_to(message, "🚫 You are banned.")
         return
@@ -639,18 +637,17 @@ def relay(message):
     # =========================
     # 📦 Album Handling
     # =========================
-
+    
     if message.media_group_id:
     
         group_id = message.media_group_id
-    
         media_groups[group_id].append(message)
     
-        # Small delay to allow all album items to arrive
-        time.sleep(0.5)
+        # Wait briefly only for first item
+        if len(media_groups[group_id]) == 1:
+            time.sleep(0.8)
     
-        # Only process once
-        album = media_groups.pop(group_id, None)
+        album = media_groups.pop(group_id, [])
     
         if album:
             broadcast_queue.put({
@@ -952,5 +949,5 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 # ▶ START BOT
 # =========================================================
 
-print("🤖 Bot is starting...")
+print("Bot is starting...")
 bot.infinity_polling(skip_pending=True)
