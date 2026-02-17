@@ -563,6 +563,11 @@ def receive_username(message):
     set_username(uid,name)
     waiting_username.discard(uid)
     bot.reply_to(message,f"✅ Username set to @{name}")
+    bot.reply_to(
+        message,
+        "🔒 Send 12 media to activate your account."
+    )
+
 @bot.message_handler(func=lambda m: m.chat.id in waiting_username, content_types=['text'])
 def receive_username(message):
     user_id = message.chat.id
@@ -728,36 +733,81 @@ def relay(message):
         return
     
     # 🔒 Not yet activated
-    if not is_whitelisted(user_id) and user_id != ADMIN_ID:
-    
-        with get_connection() as conn:
-            with conn.cursor() as c:
-                c.execute(
-                    "SELECT media_count FROM users WHERE user_id=%s",
-                    (user_id,)
-                )
-                count = c.fetchone()[0]
-    
-        if count < 12:
-    
-            if message.content_type in ['photo', 'video']:
-    
-                # Handle album counting separately like before
-                status, remaining = update_media_activity(user_id, 1)
-    
-                bot.send_message(
-                    user_id,
-                    f"📸 {remaining} media left to activate."
-                )
-                return
-    
-            else:
-                bot.send_message(
-                    user_id,
-                    "🔒 Send 12 media to activate your account."
-                )
-                return
+# 🔒 Activation check
+if not is_whitelisted(user_id) and user_id != ADMIN_ID:
 
+    with get_connection() as conn:
+        with conn.cursor() as c:
+            c.execute(
+                "SELECT media_count FROM users WHERE user_id=%s",
+                (user_id,)
+            )
+            count = c.fetchone()[0]
+
+            if count < 12:
+    
+                # If album
+                if message.media_group_id:
+        
+                    group_id = message.media_group_id
+                    media_groups[group_id].append(message)
+        
+                    if group_id in album_timers:
+                        return
+        
+                    def process_activation():
+                        time.sleep(0.8)
+        
+                        album = media_groups.pop(group_id, [])
+                        album_timers.pop(group_id, None)
+        
+                        if not album:
+                            return
+        
+                        status, remaining = update_media_activity(user_id, len(album))
+        
+                        if remaining > 0:
+                            bot.send_message(
+                                user_id,
+                                f"📸 {remaining} media left to activate."
+                            )
+                        else:
+                            bot.send_message(
+                                user_id,
+                                "🎉 Your account is now activated!"
+                            )
+        
+                    album_timers[group_id] = True
+                    threading.Thread(target=process_activation).start()
+                    return
+        
+                # If single media
+                elif message.content_type in ['photo', 'video']:
+        
+                    status, remaining = update_media_activity(user_id, 1)
+        
+                    if remaining > 0:
+                        bot.send_message(
+                            user_id,
+                            f"📸 {remaining} media left to activate."
+                        )
+                    else:
+                        bot.send_message(
+                            user_id,
+                            "🎉 Your account is now activated!"
+                        )
+        
+                    return
+        
+                # If text
+                else:
+                    bot.send_message(
+                        user_id,
+                        "🔒 Send 12 media to activate your account."
+                    )
+                    return
+    
+    
     # ⏳ Auto-ban recovery
     if is_auto_banned(user_id) and not is_whitelisted(user_id) and user_id != ADMIN_ID:
     
