@@ -33,7 +33,8 @@ broadcast_queue = Queue()
 # =========================================================
 
 conn = psycopg2.connect(DATABASE_URL)
-count=0
+count = 0
+auto_banned = False
 conn.autocommit = False
 
 # =========================================================
@@ -1235,5 +1236,6 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
 
