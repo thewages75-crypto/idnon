@@ -732,7 +732,7 @@ def relay(message):
         return
     #exclude admin and user from whitelist
     if user_id == ADMIN_ID or is_whitelisted(user_id):
-    pass
+        pass
 
     # If auto-banned and user sends media → allow recovery
     
