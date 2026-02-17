@@ -843,34 +843,34 @@ def process_recovery():
             f"📸 {remaining} media left to reactivate."
         )
 
-album_timers[group_id] = True
-threading.Thread(target=process_recovery).start()
-return
-
-# If single media
-elif message.content_type in ['photo', 'video']:
-
-status, remaining = update_media_activity(user_id, 1)
-
-if status == "reactivated":
-    bot.send_message(user_id, "🎉 You are active again!")
-
-elif status == "progress":
+    album_timers[group_id] = True
+    threading.Thread(target=process_recovery).start()
+    return
+    
+    # If single media
+    elif message.content_type in ['photo', 'video']:
+    
+    status, remaining = update_media_activity(user_id, 1)
+    
+    if status == "reactivated":
+        bot.send_message(user_id, "🎉 You are active again!")
+    
+    elif status == "progress":
+        bot.send_message(
+            user_id,
+            f"📸 {remaining} media left to reactivate."
+        )
+    
+    return
+    
+    else:
     bot.send_message(
         user_id,
-        f"📸 {remaining} media left to reactivate."
+        "⏳ You are inactive.\nSend 12 media to reactivate."
     )
-
-return
-
-else:
-bot.send_message(
-    user_id,
-    "⏳ You are inactive.\nSend 12 media to reactivate."
-)
-return
-
-
+    return
+    
+    
     # 👻 Shadow behavior
     if is_shadow(user_id):
         bot.reply_to(message, "✅ Message sent.")
