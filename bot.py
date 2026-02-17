@@ -758,17 +758,17 @@ def relay(message):
                 )
                 return
 
-# ⏳ Auto-ban recovery
-if is_auto_banned(user_id) and not is_whitelisted(user_id) and user_id != ADMIN_ID:
-
-    # If album
-    if message.media_group_id:
-
-        group_id = message.media_group_id
-        media_groups[group_id].append(message)
-
-        if group_id in album_timers:
-            return
+    # ⏳ Auto-ban recovery
+    if is_auto_banned(user_id) and not is_whitelisted(user_id) and user_id != ADMIN_ID:
+    
+        # If album
+        if message.media_group_id:
+    
+            group_id = message.media_group_id
+            media_groups[group_id].append(message)
+    
+            if group_id in album_timers:
+                return
 
         def process_recovery():
             time.sleep(0.8)  # wait for full album
