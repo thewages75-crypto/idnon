@@ -15,6 +15,7 @@ from telebot.types import (
 # =========================================================
 # 🔧 CONFIGURATION
 # =========================================================
+album_timers = {}
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -410,6 +411,13 @@ def start(message):
             bot.reply_to(message,"🚪 Joining is closed by admin.")
             return
         add_user(uid)
+        now = int(time.time())
+        with conn.cursor() as c:
+            c.execute(
+                "UPDATE users SET last_media=% WHERE user_id=%s,
+                (now,user_id)
+            )
+            conn.commit()
         waiting_username.add(uid)
         bot.reply_to(message,"👋 Welcome! Send your username.")
         return
@@ -637,28 +645,30 @@ def relay(message):
     # =========================
     # 📦 Album Handling
     # =========================
-    
-    if message.media_group_id:
+        if message.media_group_id:
     
         group_id = message.media_group_id
-    
-        # Add message to group
         media_groups[group_id].append(message)
     
-        # If this is not the first item, just return
-        if len(media_groups[group_id]) > 1:
+        # If timer already started, just return
+        if group_id in album_timers:
             return
     
-        # First item waits for rest
-        time.sleep(0.7)
+        # Start delayed processor
+        def process_album():
+            time.sleep(0.8)  # allow all parts to arrive
     
-        album = media_groups.pop(group_id, [])
+            album = media_groups.pop(group_id, [])
+            album_timers.pop(group_id, None)
     
-        if album:
-            broadcast_queue.put({
-                "type": "album",
-                "messages": album
-            })
+            if album:
+                broadcast_queue.put({
+                    "type": "album",
+                    "messages": album
+                })
+    
+        album_timers[group_id] = True
+        threading.Thread(target=process_album).start()
     
         return  # IMPORTANT: stop here for album messages
 
