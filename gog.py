@@ -1,10 +1,9 @@
-from email import message
 import os
 import time
-from contextlib import contextmanager
 import threading
 import psycopg2
 import telebot
+from contextlib import contextmanager
 from queue import Queue
 from collections import defaultdict
 from telebot.types import (
@@ -17,12 +16,11 @@ from telebot.types import (
 # =========================================================
 # 🔧 CONFIGURATION
 # =========================================================
+album_timers = {}
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-ADMIN_ID = 8046643349  # 🔴 Replace with your Telegram ID
-auto_banned = False
-media_count = 0
+ADMIN_ID = 8046643349  #  Replace with your Telegram ID
 
 bot = telebot.TeleBot(API_TOKEN)
 
@@ -40,19 +38,6 @@ conn.autocommit = False
 # =========================================================
 # 🏗 DATABASE INITIALIZATION
 # =========================================================
-def get_all_users():
-    """
-    Return all users who are allowed to receive broadcast.
-    Excludes manually banned and auto-banned users.
-    """
-    with conn.cursor() as c:
-        c.execute("""
-            SELECT user_id
-            FROM users
-            WHERE banned=FALSE
-              AND auto_banned=FALSE
-        """)
-        return c.fetchall()
 
 def init_db():
     with conn.cursor() as c:
@@ -64,7 +49,7 @@ def init_db():
                 banned BOOLEAN DEFAULT FALSE,
                 auto_banned BOOLEAN DEFAULT FALSE,
                 shadow_banned BOOLEAN DEFAULT FALSE,
-                whitelist BOOLEAN DEFAULT FALSE,
+                whitelisted BOOLEAN DEFAULT FALSE,
                 media_count INTEGER DEFAULT 0,
                 last_media BIGINT
             )
@@ -98,7 +83,6 @@ def init_db():
         """)
 
         conn.commit()
-
 @contextmanager
 def get_connection():
     conn = psycopg2.connect(DATABASE_URL)
@@ -110,8 +94,6 @@ def get_connection():
         raise
     finally:
         conn.close()
-
-
 init_db()
 
 # =========================================================
@@ -150,6 +132,21 @@ def is_whitelisted(user_id):
             )
             r = c.fetchone()
             return r and r[0]
+
+def get_all_users():
+    """
+    Return all users who are allowed to receive broadcast.
+    Excludes manually banned and auto-banned users.
+    """
+    with conn.cursor() as c:
+        c.execute("""
+            SELECT user_id
+            FROM users
+            WHERE banned=FALSE
+              AND auto_banned=FALSE
+        """)
+        return c.fetchall()
+
 
 def add_user(user_id):
     """Add user to database."""
@@ -268,63 +265,19 @@ def is_shadow(user_id):
 # ⏳ AUTO INACTIVITY SYSTEM
 # =========================
 
-# def update_media_activity(user_id):
-    
-#     now = int(time.time())
-    
-#      """Update last media time and increment media count."""
-#     with get_connection() as conn:
-#         with conn.cursor() as c:
-
-#             # Increase media count
-#             c.execute("""
-#                 UPDATE users
-#                 SET last_media=%s,
-#                     media_count = media_count + 1
-#                 WHERE user_id=%s
-#             """, (now, user_id))
-
-#             # Check auto-ban status + count
-#             c.execute("""
-#                 SELECT auto_banned, media_count
-#                 FROM users
-#                 WHERE user_id=%s
-#             """, (user_id,))
-#             result = c.fetchone()
-
-#             if result:
-#                 auto_banned, count = result
-
-#                 # If user is auto-banned and reached 12 media
-#                 if auto_banned and count >= 12:
-#                     c.execute("""
-#                         UPDATE users
-#                         SET auto_banned=FALSE,
-#                             media_count=0
-#                         WHERE user_id=%s
-#                     """, (user_id,))
-#                     conn.commit()
-#                     return True  # reactivated
-
-#         conn.commit()
-
-#     return False
-
-def update_media_activity(user_id):
+def update_media_activity(user_id, amount=1):
     now = int(time.time())
 
     with get_connection() as conn:
         with conn.cursor() as c:
 
-            # Increment media count
             c.execute("""
                 UPDATE users
                 SET last_media=%s,
-                    media_count = media_count + 1
+                    media_count = media_count + %s
                 WHERE user_id=%s
-            """, (now, user_id))
+            """, (now, amount, user_id))
 
-            # Get updated status
             c.execute("""
                 SELECT auto_banned, media_count
                 FROM users
@@ -332,42 +285,29 @@ def update_media_activity(user_id):
             """, (user_id,))
             auto_banned, count = c.fetchone()
 
-            # If still auto banned
-            if auto_banned:
+            # 🔹 Initial activation
+            if count < 12:
+                remaining = 12 - count
+                conn.commit()
+                return "progress", remaining
 
-                if count >= 12:
-                    # Reactivate
-                    c.execute("""
-                        UPDATE users
-                        SET auto_banned=FALSE,
-                            media_count=0
-                        WHERE user_id=%s
-                    """, (user_id,))
-                    conn.commit()
-                    return "reactivated", 0
+            # 🔹 If auto-banned and reached 12 → recover
+            if auto_banned and count >= 12:
+                c.execute("""
+                    UPDATE users
+                    SET auto_banned=FALSE,
+                        media_count=12
+                    WHERE user_id=%s
+                """, (user_id,))
+                conn.commit()
+                return "reactivated", 0
 
-                else:
-                    remaining = 12 - count
-                    conn.commit()
-                    return "progress", remaining
+        conn.commit()
 
-            conn.commit()
+    return "active", 0
 
-    return None, 0
-# dont have whitelist to exclude users from auto-ban and admin from auto-ban
-# def check_inactive_users():
-#     """Auto ban inactive users (1 minute logic)."""
-#     c.execute("""
-        #     UPDATE users
-        #     SET auto_banned=TRUE
-        #     WHERE last_media < %s
-        #       AND banned=FALSE
-        # """, (limit,))
-        #conn.commit()
-
-#new logic: only ban if not whitelisted and not admin, and also consider users with no activity (last_media IS NULL)    
 def check_inactive_users():
-    limit = int(time.time()) - (7 * 60 * 60)  # 7 hours inactivity threshold
+    limit = int(time.time()) - 60
 
     with get_connection() as conn:
         with conn.cursor() as c:
@@ -381,6 +321,7 @@ def check_inactive_users():
             """, (limit, ADMIN_ID))
 
         conn.commit()
+
 
 
 def is_auto_banned(user_id):
@@ -523,30 +464,22 @@ def user_blocked_by_system(user_id):
     Returns (blocked: bool, reason_message: str or None)
     Used before broadcasting.
     """
-    # old logic: checks ban and 
-    # if is_banned(user_id):
-    #     return True, "🚫 You are banned."
 
-    # if is_auto_banned(user_id):
-    #     return True, "⏳ You are temporarily auto-banned due to inactivity."
-
-    # return False, None
-    # New logic: need 12 media to recover from auto-ban, but manual ban always blocks
     # 🚫 Manual ban
     if is_banned(user_id):
         bot.reply_to(message, "🚫 You are banned.")
         return
-
+    
     # ⏳ Auto-ban recovery logic
-    if is_auto_banned(user_id) and not is_whitelisted(user_id) and user_id != ADMIN_ID:
-
+    if is_auto_banned(user_id):
+    
         if message.content_type in ['photo', 'video']:
-
+    
             reactivated = update_media_activity(user_id)
-
+    
             if reactivated:
                 bot.reply_to(message, "🎉 You are active again! Stay active.")
-
+    
             else:
                 # Show progress
                 with get_connection() as conn:
@@ -556,20 +489,20 @@ def user_blocked_by_system(user_id):
                             (user_id,)
                         )
                         count = c.fetchone()[0]
-
+    
                 bot.reply_to(
                     message,
                     f"📸 Progress: {count}/12 media required to reactivate."
                 )
-
+    
             return
-
+    
         else:
             bot.reply_to(
                 message,
                 "⏳ You are inactive.\nSend 12 media to reactivate."
             )
-            return
+            return False, None
 
 # =========================================================
 # 👤 USER FLOW
@@ -577,42 +510,45 @@ def user_blocked_by_system(user_id):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    user_id=message.chat.id
-    add_user(user_id)
 
-    # THIS IS A CRUCIAL PART: we update media activity on /start to prevent auto-ban for returning users and new join members who might not send media immediately
-    now = int(time.time())
-    with conn.cursor() as c:
-        c.execute(
-            "UPDATE users SET last_media=%s WHERE user_id=%s",
-            (now, user_id)
-        )
-        conn.commit()
+    user_id = message.chat.id
 
-    if not user_exists(uid):
+    # 🚫 Manual ban check
+    if is_banned(user_id):
+        bot.reply_to(message, "🚫 You are banned.")
+        return
+
+    # 🆕 New user
+    if not user_exists(user_id):
+
         if not is_join_open():
-            bot.reply_to(message,"🚪 Joining is closed by admin.")
+            bot.reply_to(message, "🚪 Joining is closed by admin.")
             return
-        add_user(uid)
-        waiting_username.add(uid)
-        bot.reply_to(message,"👋 Welcome! Send your username.")
-        return
-    # Update media activity to prevent auto-ban for returning users and new jon members
-    now = int(time.time())
-    with conn.cursor() as c:
-        c.execute(
-            "UPDATE users SET last_media=%s WHERE user_id=%s",
-            (now, user_id)
-        )
-        conn.commit()
 
+        # Add user
+        add_user(user_id)
 
-    if not get_username(uid):
-        waiting_username.add(uid)
-        bot.reply_to(message,"✍ Send your username.")
+        # Set initial activity timestamp
+        now = int(time.time())
+        with conn.cursor() as c:
+            c.execute(
+                "UPDATE users SET last_media=%s WHERE user_id=%s",
+                (now, user_id)
+            )
+            conn.commit()
+
+        waiting_username.add(user_id)
+        bot.reply_to(message, "👋 Welcome! Send your username.")
         return
 
-    bot.reply_to(message,"👋 Welcome back!")
+    # 📝 Existing user but no username
+    if not get_username(user_id):
+        waiting_username.add(user_id)
+        bot.reply_to(message, "✍ Send your username.")
+        return
+
+    # ✅ Normal case
+    bot.reply_to(message, "👋 Welcome back!")
 
 @bot.message_handler(func=lambda m: m.chat.id in waiting_username,content_types=['text'])
 def receive_username(message):
@@ -627,27 +563,12 @@ def receive_username(message):
     set_username(uid,name)
     waiting_username.discard(uid)
     bot.reply_to(message,f"✅ Username set to @{name}")
-@bot.message_handler(func=lambda m: m.chat.id in waiting_username, content_types=['text'])
-def receive_username(message):
-    user_id = message.chat.id
-    username = message.text.strip().lower()
+    bot.reply_to(
+        message,
+        "🔒 Send 12 media to activate your account."
+    )
 
-    # Username length check
-    if len(username) < 3:
-        bot.reply_to(message, "❌ Username too short (min 3 characters).")
-        return
 
-    # Username uniqueness check
-    if username_taken(username):
-        bot.reply_to(message, "❌ Username already taken. Try another.")
-        return
-
-    # Save username
-    set_username(user_id, username)
-
-    waiting_username.discard(user_id)
-
-    bot.reply_to(message, f"✅ Username set to @{username}")
 
 
 # =========================================================
@@ -720,8 +641,9 @@ def _process_single(message):
 
             time.sleep(0.04)
 
-        except:
-            pass
+        except Exception as e:
+            print("ERROR:", e)
+
 def _process_album(messages):
 
     users = get_all_users()
@@ -773,72 +695,183 @@ def _process_album(messages):
 
                 time.sleep(0.04)
 
-            except:
-                pass
+            except Exception as e:
+                print("ERROR:", e)
 
-#@bot.message_handler(content_types=['text', 'photo', 'video']) relays all messages even commands, we need to filter commands out
+
+#@bot.message_handler(content_types=['text', 'photo', 'video'])
 @bot.message_handler(
     func=lambda m: not m.text or not m.text.startswith('/'),
     content_types=['text','photo','video']
 )
-
 def relay(message):
 
     user_id = message.chat.id
 
     # 🚫 Manual ban
-    # blocked, reason = user_blocked_by_system(user_id)
-    # if blocked:
-    #     bot.reply_to(message, reason)
-    #     return
-    # Manual ban always blocks
-    
-    #New logic: if banned → block with message, if auto-banned → block with message, but if auto-banned and sending media → unban and allow
+   # 🚫 Manual ban
     if is_banned(user_id):
-        bot.reply_to(message, "🚫 You are banned.")
+        bot.send_message(user_id, "🚫 You are banned.")
         return
+    
+    # 🔒 Not yet activated
+    # 🔒 Activation check
+    # Skip for admin and whitelisted users
+    if not is_whitelisted(user_id) and user_id != ADMIN_ID:
 
-    # If auto-banned and user sends media → allow recoverye
-    # if is_auto_banned(user_id):
+        with get_connection() as conn:
+            with conn.cursor() as c:
+                c.execute(
+                    "SELECT media_count, auto_banned FROM users WHERE user_id=%s",
+                    (user_id,)
+                )
+                row = c.fetchone()
 
-    #     if message.content_type in ['photo', 'video']:
-    #         update_media_activity(user_id)
-    #         bot.reply_to(message, "🎉 You are unbanned. Stay active!")
-    #     else:
-    #         bot.reply_to(message, "⏳ You are inactive. Send media to reactivate.")
-    #         return
-    # ⏳ Auto-ban recovery
-    if is_auto_banned(user_id):
+        if not row:
+            return
 
-        if message.content_type in ['photo', 'video']:
+        count, auto_banned = row
 
-            # Only process once per album
-            if message.media_group_id:
-                if message.media_group_id in media_groups:
+    # =========================
+    # 🔒 INITIAL ACTIVATION
+    # =========================
+    if count < 12 and not auto_banned:
+
+        # Album case
+        if message.media_group_id:
+
+            group_id = message.media_group_id
+            media_groups[group_id].append(message)
+
+            # If timer already exists, just return
+            if group_id in album_timers:
+                return
+
+            def process_activation():
+                time.sleep(0.8)
+
+                album = media_groups.pop(group_id, [])
+                album_timers.pop(group_id, None)
+
+                if not album:
                     return
 
-            status, remaining = update_media_activity(user_id)
+                status, remaining = update_media_activity(
+                    user_id,
+                    len(album)
+                )
+
+                if remaining > 0:
+                    bot.send_message(
+                        user_id,
+                        f"📸 {remaining} media left to activate."
+                    )
+                else:
+                    bot.send_message(
+                        user_id,
+                        "🎉 Your account is now activated!"
+                    )
+
+            album_timers[group_id] = True
+            threading.Thread(target=process_activation).start()
+            return
+
+        # Single media case
+        elif message.content_type in ['photo', 'video']:
+
+            status, remaining = update_media_activity(user_id, 1)
+
+            if remaining > 0:
+                bot.send_message(
+                    user_id,
+                    f"📸 {remaining} media left to activate."
+                )
+            else:
+                bot.send_message(
+                    user_id,
+                    "🎉 Your account is now activated!"
+                )
+
+            return
+
+        # Text case
+        else:
+            bot.send_message(
+                user_id,
+                "🔒 Send 12 media to activate your account."
+            )
+            return
+
+    # =========================
+    # ⏳ AUTO-BAN RECOVERY
+    # =========================
+    if auto_banned:
+
+        # Album case
+        if message.media_group_id:
+
+            group_id = message.media_group_id
+            media_groups[group_id].append(message)
+
+            if group_id in album_timers:
+                return
+
+            def process_recovery():
+                time.sleep(0.8)
+
+                album = media_groups.pop(group_id, [])
+                album_timers.pop(group_id, None)
+
+                if not album:
+                    return
+
+                status, remaining = update_media_activity(
+                    user_id,
+                    len(album)
+                )
+
+                if status == "reactivated":
+                    bot.send_message(
+                        user_id,
+                        "🎉 You are active again!"
+                    )
+                elif remaining > 0:
+                    bot.send_message(
+                        user_id,
+                        f"📸 {remaining} media left to reactivate."
+                    )
+
+            album_timers[group_id] = True
+            threading.Thread(target=process_recovery).start()
+            return
+
+        # Single media
+        elif message.content_type in ['photo', 'video']:
+
+            status, remaining = update_media_activity(user_id, 1)
 
             if status == "reactivated":
-                bot.reply_to(message, "🎉 You are active again!")
-
-            elif status == "progress":
-                bot.reply_to(
-                    message,
+                bot.send_message(
+                    user_id,
+                    "🎉 You are active again!"
+                )
+            elif remaining > 0:
+                bot.send_message(
+                    user_id,
                     f"📸 {remaining} media left to reactivate."
                 )
 
             return
 
+        # Text case
         else:
-            bot.reply_to(
-                message,
+            bot.send_message(
+                user_id,
                 "⏳ You are inactive.\nSend 12 media to reactivate."
             )
             return
-
-
-
+    
+    
     # 👻 Shadow behavior
     if is_shadow(user_id):
         bot.reply_to(message, "✅ Message sent.")
@@ -853,54 +886,39 @@ def relay(message):
     # ⏳ Inactivity check
     check_inactive_users()
 
-    # 📸 Media tracking
+    # Media tracking
     if message.content_type in ['photo', 'video']:
         update_media_activity(user_id)
 
-    # 📦 Album detection
-    # if message.media_group_id:
-    #     media_groups[message.media_group_id].append(message)
-    #     time.sleep(1)
-
-    #     if message.media_group_id in media_groups:
-    #         album = media_groups.pop(message.media_group_id)
-    #         broadcast_queue.put({
-    #             "type": "album",
-    #             "messages": album
-    #         })
     # =========================
     # 📦 Album Handling
     # =========================
-    album_timers = {}
-
-    if message.media_group_id:
-
-        group_id = message.media_group_id
-        media_groups[group_id].append(message)
-
+        if message.media_group_id:
+    
+            group_id = message.media_group_id
+            media_groups[group_id].append(message)
+    
         # If timer already started, just return
         if group_id in album_timers:
             return
-
+    
         # Start delayed processor
         def process_album():
             time.sleep(0.8)  # allow all parts to arrive
-
+    
             album = media_groups.pop(group_id, [])
             album_timers.pop(group_id, None)
-
+    
             if album:
                 broadcast_queue.put({
                     "type": "album",
                     "messages": album
                 })
-
+    
         album_timers[group_id] = True
         threading.Thread(target=process_album).start()
-
+    
         return  # IMPORTANT: stop here for album messages
-
-
 
     else:
         broadcast_queue.put({
@@ -930,85 +948,8 @@ def stats(message):
         f"👥 Total Users: {total}\n"
         f"🔨 Manual Banned: {banned}\n"
         f"⏳ Auto Banned: {auto}\n"
-        f"👻 Shadow Banned: {shadow}\n"
-        f"✅ Whitelisted: {get_whitelisted_count()}\n"
-        f"inactive time: {get_inactive_time()//3600}h"
+        f"👻 Shadow Banned: {shadow}"
     )
-#old method: ID based info
-# @bot.message_handler(commands=['info'])
-# def info(message):
-#     if not is_admin(message.chat.id):
-#         return
-
-#     parts = message.text.split()
-#     if len(parts) < 2:
-#         bot.reply_to(message, "Usage: /info USER_ID")
-#         return
-
-#     try:
-#         uid = int(parts[1])
-#     except:
-#         bot.reply_to(message, "Invalid ID.")
-#         return
-
-#     with conn.cursor() as c:
-#         c.execute("""
-#             SELECT user_id, username, banned,
-#                    auto_banned, shadow_banned, media_count
-#             FROM users WHERE user_id=%s
-#         """, (uid,))
-#         data = c.fetchone()
-
-#     if not data:
-#         bot.reply_to(message, "User not found.")
-#         return
-
-#     bot.reply_to(
-#         message,
-#         f"👤✨ USER INFO ✨👤\n\n"
-#         f"🆔 ID: {data[0]}\n"
-#         f"🏷 Username: @{data[1]}\n"
-#         f"🔨 Banned: {data[2]}\n"
-#         f"⏳ Auto Banned: {data[3]}\n"
-#         f"👻 Shadow Banned: {data[4]}\n"
-#         f"📸 Media Sent: {data[5]}"
-#     )
-
-#new method: supports both reply-based and ID-based info
-@bot.message_handler(commands=['whitelist'])
-def add_whitelist(message):
-    if message.chat.id != ADMIN_ID:
-        return
-
-    if not message.reply_to_message:
-        bot.reply_to(message, "Reply to a user message.")
-        return
-
-    uid = get_original_user(message.reply_to_message.message_id)
-
-    if not uid:
-        bot.reply_to(message, "User not found.")
-        return
-
-    whitelist_user(uid)
-    bot.reply_to(message, f"✅ User {uid} added to whitelist.")
-@bot.message_handler(commands=['removewhitelist'])
-def remove_wl(message):
-    if message.chat.id != ADMIN_ID:
-        return
-
-    if not message.reply_to_message:
-        bot.reply_to(message, "Reply to a user message.")
-        return
-
-    uid = get_original_user(message.reply_to_message.message_id)
-
-    if not uid:
-        bot.reply_to(message, "User not found.")
-        return
-
-    remove_whitelist(uid)
-    bot.reply_to(message, f"❌ User {uid} removed from whitelist.")
 
 @bot.message_handler(commands=['info'])
 def info(message):
@@ -1028,8 +969,9 @@ def info(message):
         if len(parts) > 1:
             try:
                 uid = int(parts[1])
-            except:
-                pass
+            except Exception as e:
+                print("ERROR:", e)
+
 
     if not uid:
         bot.reply_to(message, "❌ Use:\n/info USER_ID\nor reply to a user message.")
@@ -1075,26 +1017,6 @@ def reply_ban(message):
 
     ban_user(uid)
     bot.reply_to(message, f"🔨 User {uid} banned.")
-
-    # old method: ID based ban
-# @bot.message_handler(commands=['unban'])
-# def admin_unban(message):
-#     if not is_admin(message.chat.id):
-#         return
-
-#     parts = message.text.split()
-#     if len(parts) < 2:
-#         bot.reply_to(message, "Usage: /unban USER_ID")
-#         return
-
-#     try:
-#         uid = int(parts[1])
-#         unban_user(uid)
-#         bot.reply_to(message, f"✅ User {uid} unbanned.")
-#     except:
-#         bot.reply_to(message, "Invalid ID.")
-
-# New method: supports both reply-based and ID-based unban
 @bot.message_handler(commands=['unban'])
 def admin_unban(message):
 
@@ -1113,8 +1035,9 @@ def admin_unban(message):
         if len(parts) > 1:
             try:
                 uid = int(parts[1])
-            except:
-                pass
+            except Exception as e:
+                print("ERROR:", e)
+
 
     if not uid:
         bot.reply_to(message, "❌ Could not detect user.")
@@ -1146,8 +1069,9 @@ def purge_user(message):
         try:
             bot.delete_message(receiver_id, mid)
             deleted += 1
-        except:
-            pass
+        except Exception as e:
+            print("ERROR:", e)
+
 
     bot.reply_to(message, f"🧹 Purged {deleted} messages.")
 @bot.message_handler(commands=['del'])
@@ -1173,8 +1097,9 @@ def delete_everywhere(message):
         try:
             bot.delete_message(receiver_id, mid)
             deleted += 1
-        except:
-            pass
+        except Exception as e:
+            print("ERROR:", e)
+
 
     bot.reply_to(message, f"🗑 Deleted from {deleted} chats.")
 @bot.message_handler(commands=['addword'])
@@ -1291,7 +1216,5 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 # ▶ START BOT
 # =========================================================
 
-print("🤖 Bot is starting...")
+print("Bot is starting...")
 bot.infinity_polling(skip_pending=True)
-
-
