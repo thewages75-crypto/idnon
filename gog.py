@@ -625,7 +625,7 @@ def start(message):
         )
         conn.commit()
 
-    if not user_exists(uid):
+    if not user_exists(user_id):
         if not is_join_open():
             bot.reply_to(message,"🚪 Joining is closed by admin.")
             return
@@ -1447,6 +1447,7 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("🤖 Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
 
 
