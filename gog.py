@@ -33,8 +33,7 @@ broadcast_queue = Queue()
 # =========================================================
 
 conn = psycopg2.connect(DATABASE_URL)
-count = 0
-auto_banned = False
+
 conn.autocommit = False
 
 # =========================================================
@@ -722,7 +721,8 @@ def _process_album(messages):
     content_types=['text','photo','video']
 )
 def relay(message):
-
+    count = 0
+    auto_banned = False
     user_id = message.chat.id
 
     # 🚫 Manual ban
@@ -1236,6 +1236,7 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
 
 
