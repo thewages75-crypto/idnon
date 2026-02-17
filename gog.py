@@ -511,7 +511,22 @@ def user_blocked_by_system(user_id):
 @bot.message_handler(commands=['start'])
 def start(message):
 
-    user_id = message.chat.id
+    # 👑 ADMIN BYPASS (no activation needed)
+    if user_id == ADMIN_ID:
+        if not user_exists(user_id):
+            add_user(user_id)
+
+        now = int(time.time())
+        with conn.cursor() as c:
+            c.execute(
+                "UPDATE users SET last_media=%s, media_count=12, auto_banned=FALSE WHERE user_id=%s",
+                (now, user_id)
+            )
+            conn.commit()
+
+        bot.reply_to(message, "👑 Admin access granted.")
+        return
+
 
     # 🚫 Manual ban check
     if is_banned(user_id):
@@ -522,7 +537,7 @@ def start(message):
     if not user_exists(user_id):
 
         if not is_join_open():
-            bot.reply_to(message, "🚪 Joining is closed by admin.")
+            bot.reply_to(message, "Maximun number of users reached. joining is currently closed.")
             return
 
         # Add user
@@ -727,12 +742,11 @@ def relay(message):
                 )
                 row = c.fetchone()
 
-        if row:
+        if  row:
             count, auto_banned = row
         else:
             count = 0
             auto_banned = False
-
 
     # =========================
     # 🔒 INITIAL ACTIVATION
@@ -1220,4 +1234,3 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("Bot is starting...")
 bot.infinity_polling(skip_pending=True)
-
