@@ -224,17 +224,44 @@ def is_shadow(user_id):
 # =========================
 
 def update_media_activity(user_id):
-    """Update last media time and increment media count."""
     now = int(time.time())
-    with conn.cursor() as c:
-        c.execute("""
-            UPDATE users
-            SET last_media=%s,
-                media_count = media_count + 1,
-                auto_banned=FALSE
-            WHERE user_id=%s
-        """, (now, user_id))
+    """Update last media time and increment media count."""
+    with get_connection() as conn:
+        with conn.cursor() as c:
+
+            # Increase media count
+            c.execute("""
+                UPDATE users
+                SET last_media=%s,
+                    media_count = media_count + 1
+                WHERE user_id=%s
+            """, (now, user_id))
+
+            # Check auto-ban status + count
+            c.execute("""
+                SELECT auto_banned, media_count
+                FROM users
+                WHERE user_id=%s
+            """, (user_id,))
+            result = c.fetchone()
+
+            if result:
+                auto_banned, count = result
+
+                # If user is auto-banned and reached 12 media
+                if auto_banned and count >= 12:
+                    c.execute("""
+                        UPDATE users
+                        SET auto_banned=FALSE,
+                            media_count=0
+                        WHERE user_id=%s
+                    """, (user_id,))
+                    conn.commit()
+                    return True  # reactivated
+
         conn.commit()
+
+    return False
 
 
 def check_inactive_users():
@@ -391,13 +418,44 @@ def user_blocked_by_system(user_id):
     Used before broadcasting.
     """
 
+    # 🚫 Manual ban
     if is_banned(user_id):
-        return True, "🚫 You are banned."
-
+        bot.reply_to(message, "🚫 You are banned.")
+        return
+    
+    # ⏳ Auto-ban recovery logic
     if is_auto_banned(user_id):
-        return True, "⏳ You are temporarily auto-banned due to inactivity."
-
-    return False, None
+    
+        if message.content_type in ['photo', 'video']:
+    
+            reactivated = update_media_activity(user_id)
+    
+            if reactivated:
+                bot.reply_to(message, "🎉 You are active again! Stay active.")
+    
+            else:
+                # Show progress
+                with get_connection() as conn:
+                    with conn.cursor() as c:
+                        c.execute(
+                            "SELECT media_count FROM users WHERE user_id=%s",
+                            (user_id,)
+                        )
+                        count = c.fetchone()[0]
+    
+                bot.reply_to(
+                    message,
+                    f"📸 Progress: {count}/12 media required to reactivate."
+                )
+    
+            return
+    
+        else:
+            bot.reply_to(
+                message,
+                "⏳ You are inactive.\nSend 12 media to reactivate."
+            )
+            return False, None
 
 # =========================================================
 # 👤 USER FLOW
