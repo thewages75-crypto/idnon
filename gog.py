@@ -727,10 +727,12 @@ def relay(message):
                 )
                 row = c.fetchone()
 
-        if not row:
-            return
+        if row:
+            count, auto_banned = row
+        else:
+            count = 0
+            auto_banned = False
 
-        count, auto_banned = row
 
     # =========================
     # 🔒 INITIAL ACTIVATION
@@ -1218,3 +1220,4 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
