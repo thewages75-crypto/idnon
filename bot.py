@@ -405,13 +405,25 @@ def user_blocked_by_system(user_id):
 
 @bot.message_handler(commands=['start'])
 def start(message):
+
     user_id = message.chat.id
-    if not user_exists(uid):
+
+    # 🚫 Manual ban check
+    if is_banned(user_id):
+        bot.reply_to(message, "🚫 You are banned.")
+        return
+
+    # 🆕 New user
+    if not user_exists(user_id):
+
         if not is_join_open():
-            bot.reply_to(message,"🚪 Joining is closed by admin.")
+            bot.reply_to(message, "🚪 Joining is closed by admin.")
             return
-        add_user(uid)
+
+        # Add user
         add_user(user_id)
+
+        # Set initial activity timestamp
         now = int(time.time())
         with conn.cursor() as c:
             c.execute(
@@ -420,24 +432,18 @@ def start(message):
             )
             conn.commit()
 
-        waiting_username.add(uid)
-        bot.reply_to(message,"👋 Welcome! Send your username.")
-        return
-        now = int(time.time())
-        with conn.cursor() as c:
-            c.execute(
-                "UPDATE users SET last_media=%s WHERE user_id=%s",
-                (now, user_id)
-            )
-            conn.commit()
-
-
-    if not get_username(uid):
-        waiting_username.add(uid)
-        bot.reply_to(message,"✍ Send your username.")
+        waiting_username.add(user_id)
+        bot.reply_to(message, "👋 Welcome! Send your username.")
         return
 
-    bot.reply_to(message,"👋 Welcome back!")
+    # 📝 Existing user but no username
+    if not get_username(user_id):
+        waiting_username.add(user_id)
+        bot.reply_to(message, "✍ Send your username.")
+        return
+
+    # ✅ Normal case
+    bot.reply_to(message, "👋 Welcome back!")
 
 @bot.message_handler(func=lambda m: m.chat.id in waiting_username,content_types=['text'])
 def receive_username(message):
