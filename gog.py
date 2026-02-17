@@ -723,7 +723,8 @@ def _process_album(messages):
 def relay(message):
 
     user_id = message.chat.id
-
+    count = 0
+    auto_banned = False
     # 🚫 Manual ban
     if is_banned(user_id):
         bot.send_message(user_id, "🚫 You are banned.")
@@ -747,9 +748,12 @@ def relay(message):
             if row:
                 count, auto_banned = row
             else:
-                count = 0
-                auto_banned = False
-
+                bot.send_messaage(
+                    user_id;
+                    "Plesase send /start "
+                )
+                return
+                
             # =========================
             # 🔒 INITIAL ACTIVATION
             # =========================
@@ -1250,6 +1254,7 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
 
 
