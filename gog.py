@@ -749,7 +749,7 @@ def relay(message):
                 count, auto_banned = row
             else:
                 bot.send_messaage(
-                    user_id;
+                    user_id,
                     "Plesase send /start "
                 )
                 return
@@ -1254,6 +1254,7 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
 
 
