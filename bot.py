@@ -405,7 +405,7 @@ def user_blocked_by_system(user_id):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    uid=message.chat.id
+    user_id = message.chat.id
     if not user_exists(uid):
         if not is_join_open():
             bot.reply_to(message,"🚪 Joining is closed by admin.")
