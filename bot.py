@@ -649,8 +649,8 @@ def relay(message):
     # =========================
         if message.media_group_id:
     
-        group_id = message.media_group_id
-        media_groups[group_id].append(message)
+            group_id = message.media_group_id
+            media_groups[group_id].append(message)
     
         # If timer already started, just return
         if group_id in album_timers:
