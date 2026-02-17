@@ -842,21 +842,18 @@ def relay(message):
     # 🔒 Not yet activated
     # 🔒 Activation check
     # Skip for admin and whitelisted users
-if not is_whitelisted(user_id) and user_id != ADMIN_ID:
-
-    with get_connection() as conn:
-        with conn.cursor() as c:
-            c.execute(
-                "SELECT media_count, auto_banned FROM users WHERE user_id=%s",
-                (user_id,)
-            )
-            row = c.fetchone()
-            
-
-            if not row:
-                return
-
-    count, auto_banned = row
+    if not is_whitelisted(user_id) and user_id != ADMIN_ID:
+    
+        with get_connection() as conn:
+            with conn.cursor() as c:
+                c.execute(
+                    "SELECT media_count, auto_banned FROM users WHERE user_id=%s",
+                    (user_id,)
+                )
+                row = c.fetchone()
+                if not row:
+                    return
+        count, auto_banned = row
 
     # =========================
     # 🔒 INITIAL ACTIVATION
@@ -1450,4 +1447,5 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("🤖 Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
