@@ -613,42 +613,39 @@ def user_blocked_by_system(user_id):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    user_id=message.chat.id
-    add_user(user_id)
 
-    # THIS IS A CRUCIAL PART: we update media activity on /start to prevent auto-ban for returning users and new join members who might not send media immediately
-    now = int(time.time())
-    with conn.cursor() as c:
-        c.execute(
-            "UPDATE users SET last_media=%s WHERE user_id=%s",
-            (now, user_id)
-        )
-        conn.commit()
+    user_id = message.chat.id
+
+    if is_banned(user_id):
+        bot.reply_to(message, "🚫 You are banned.")
+        return
 
     if not user_exists(user_id):
+
         if not is_join_open():
-            bot.reply_to(message,"🚪 Joining is closed by admin.")
+            bot.reply_to(message, "🚪 Joining is closed by admin.")
             return
-        add_user(uid)
-        waiting_username.add(uid)
-        bot.reply_to(message,"👋 Welcome! Send your username.")
-        return
-    # Update media activity to prevent auto-ban for returning users and new jon members
-    now = int(time.time())
-    with conn.cursor() as c:
-        c.execute(
-            "UPDATE users SET last_media=%s WHERE user_id=%s",
-            (now, user_id)
-        )
-        conn.commit()
 
+        add_user(user_id)
 
-    if not get_username(uid):
-        waiting_username.add(uid)
-        bot.reply_to(message,"✍ Send your username.")
+        now = int(time.time())
+        with get_connection() as conn:
+            with conn.cursor() as c:
+                c.execute(
+                    "UPDATE users SET last_media=%s WHERE user_id=%s",
+                    (now, user_id)
+                )
+
+        waiting_username.add(user_id)
+        bot.reply_to(message, "👋 Welcome! Send your username.")
         return
 
-    bot.reply_to(message,"👋 Welcome back!")
+    if not get_username(user_id):
+        waiting_username.add(user_id)
+        bot.reply_to(message, "✍ Send your username.")
+        return
+
+    bot.reply_to(message, "👋 Welcome back!")
 
 @bot.message_handler(func=lambda m: m.chat.id in waiting_username,content_types=['text'])
 def receive_username(message):
@@ -1447,6 +1444,7 @@ threading.Thread(target=broadcast_worker, daemon=True).start()
 
 print("🤖 Bot is starting...")
 bot.infinity_polling(skip_pending=True)
+
 
 
 
