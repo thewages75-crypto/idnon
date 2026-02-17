@@ -3,6 +3,7 @@ import time
 import threading
 import psycopg2
 import telebot
+from contextlib import contextmanager
 from queue import Queue
 from collections import defaultdict
 from telebot.types import (
@@ -81,7 +82,17 @@ def init_db():
         """)
 
         conn.commit()
-
+@contextmanager
+def get_connection():
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        yield conn
+        conn.commit()
+    except:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 init_db()
 
 # =========================================================
