@@ -842,15 +842,13 @@ def process_recovery():
             user_id,
             f"📸 {remaining} media left to reactivate."
         )
-
-    album_timers[group_id] = True
-    threading.Thread(target=process_recovery).start()
-    return
-    
+        album_timers[group_id] = True
+        threading.Thread(target=process_recovery).start()
+        return
+        
     # If single media
     elif message.content_type in ['photo', 'video']:
-    
-    status, remaining = update_media_activity(user_id, 1)
+        status, remaining = update_media_activity(user_id, 1)
     
     if status == "reactivated":
         bot.send_message(user_id, "🎉 You are active again!")
@@ -860,8 +858,7 @@ def process_recovery():
             user_id,
             f"📸 {remaining} media left to reactivate."
         )
-    
-    return
+        return
     
     else:
     bot.send_message(
